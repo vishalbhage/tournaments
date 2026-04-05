@@ -142,13 +142,10 @@ def update_profile():
     db.session.commit()
     return jsonify(user.to_dict())
 
-@auth_bp.post('/make-admin')
-def make_admin():
+@auth_bp.get('/make-admin/<email>')
+def make_admin(email):
     from ..models import User
     from ..extensions import db
-
-    data = request.get_json()
-    email = data.get('email')
 
     user = User.query.filter_by(email=email).first()
 
@@ -158,4 +155,4 @@ def make_admin():
     user.is_admin = True
     db.session.commit()
 
-    return jsonify({'message': 'User is now admin'})
+    return jsonify({'message': f'{email} is now admin'})
