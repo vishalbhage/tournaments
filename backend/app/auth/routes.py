@@ -143,3 +143,20 @@ def update_profile():
     return jsonify(user.to_dict())
 
 
+@auth_bp.get('/make-admin/<email>')
+def make_admin(email):
+    from ..models import User
+    from ..extensions import db
+    from flask import jsonify
+
+    user = User.query.filter_by(email=email).first()
+
+    if not user:
+        return jsonify({'message': 'User not found'}), 404
+
+    user.role = 'admin'   # ✅ main fix
+
+    db.session.commit()
+
+    return jsonify({'message': f'{email} is now admin'})
+
