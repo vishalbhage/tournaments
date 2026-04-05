@@ -52,17 +52,20 @@ class User(db.Model):
         return bool(self.password_hash and check_password_hash(self.password_hash, password))
 
     def to_dict(self):
-        return {
-            'id': self.id,
-            'email': self.email,
-            'username': self.username,
-            'full_name': self.full_name,
-            'photo_url': self.photo_url,
-            'role': self.role,
-            'coins': self.coins,
-            'username_locked': self.username_locked,
-            'referral_code': self.referral_code,
-        }
+    return {
+        'id': self.id,
+        'email': self.email,
+        'username': self.username,
+        'full_name': self.full_name,
+        'photo_url': self.photo_url,
+        'coins': self.coins,
+        'referral_code': self.referral_code,
+        'username_locked': self.username_locked,
+
+        # 🔥 ADD THESE
+        'is_admin': self.is_admin,
+        'role': 'admin' if self.is_admin else 'user',
+    }
 
 
 class Match(db.Model):
