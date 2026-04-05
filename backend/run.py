@@ -7,7 +7,7 @@ app = create_app()
 
 with app.app_context():
     db.create_all()
-    run_seed()
+    
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
