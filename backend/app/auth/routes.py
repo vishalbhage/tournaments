@@ -142,17 +142,4 @@ def update_profile():
     db.session.commit()
     return jsonify(user.to_dict())
 
-@auth_bp.get('/make-admin/<email>')
-def make_admin(email):
-    from ..models import User
-    from ..extensions import db
 
-    user = User.query.filter_by(email=email).first()
-
-    if not user:
-        return jsonify({'message': 'User not found'}), 404
-
-    user.is_admin = True
-    db.session.commit()
-
-    return jsonify({'message': f'{email} is now admin'})
