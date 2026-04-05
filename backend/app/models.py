@@ -45,6 +45,10 @@ class User(db.Model):
     participants = db.relationship('Participant', back_populates='user', lazy=True)
     transactions = db.relationship('WalletTransaction', back_populates='user', lazy=True)
 
+    @property
+    def is_admin(self) -> bool:
+        return self.role == UserRole.ADMIN.value
+
     def set_password(self, password: str):
         self.password_hash = generate_password_hash(password)
 
@@ -52,20 +56,20 @@ class User(db.Model):
         return bool(self.password_hash and check_password_hash(self.password_hash, password))
 
     def to_dict(self):
-    return {
-        'id': self.id,
-        'email': self.email,
-        'username': self.username,
-        'full_name': self.full_name,
-        'photo_url': self.photo_url,
-        'coins': self.coins,
-        'referral_code': self.referral_code,
-        'username_locked': self.username_locked,
-
-        # 🔥 ADD THESE
-        'is_admin': self.is_admin,
-        'role': 'admin' if self.is_admin else 'user',
-    }
+        return {
+            'id': self.id,
+            'email': self.email,
+            'username': self.username,
+            'full_name': self.full_name,
+            'photo_url': self.photo_url,
+            'role': self.role,
+            'is_admin': self.is_admin,
+            'coins': self.coins,
+            'username_locked': self.username_locked,
+            'referral_code': self.referral_code,
+            'referred_by': self.referred_by,
+            'created_at': self.created_at.isoformat(),
+        }
 
 
 class Match(db.Model):
@@ -84,9 +88,14 @@ class Match(db.Model):
     start_time = db.Column(db.DateTime, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
-    participants = db.relationship('Participant', back_populates='match', lazy=True, cascade='all, delete-orphan')
+    participants = db.relationship(
+        'Participant',
+        back_populates='match',
+        lazy=True,
+        cascade='all, delete-orphan'
+    )
 
-    def to_dict(self, include_sensitive=False):
+    def to_dict(self, include_sensitive: bool = False):
         data = {
             'id': self.id,
             'title': self.title,
@@ -99,9 +108,11 @@ class Match(db.Model):
             'status': self.status,
             'start_time': self.start_time.isoformat(),
         }
+
         if include_sensitive:
             data['room_id'] = self.room_id
             data['room_password'] = self.room_password
+
         return data
 
 
