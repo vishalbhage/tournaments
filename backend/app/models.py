@@ -39,7 +39,7 @@ class User(db.Model):
     full_name = db.Column(db.String(80), nullable=False)
 
     photo_url = db.Column(db.String(255))
-    youtube_link = db.Column(db.String(255))  # 🔥 NEW
+    youtube_link = db.Column(db.String(255))  # optional
 
     role = db.Column(db.String(20), default=UserRole.USER.value, nullable=False)
     coins = db.Column(db.Integer, default=1000, nullable=False)
@@ -62,13 +62,20 @@ class User(db.Model):
     def check_password(self, password):
         return bool(self.password_hash and check_password_hash(self.password_hash, password))
 
+    # ✅ IMPORTANT FIX (THIS FIXES LOGIN)
     def to_dict(self):
         return {
             'id': self.id,
+            'email': self.email,                # REQUIRED
             'username': self.username,
-            'coins': self.coins,
+            'full_name': self.full_name,        # REQUIRED
+            'photo_url': self.photo_url,
             'role': self.role,
-            'youtube_link': self.youtube_link,
+            'is_admin': self.is_admin,
+            'coins': self.coins,
+            'referral_code': self.referral_code,  # REQUIRED
+            'referred_by': self.referred_by,
+            'created_at': self.created_at.isoformat(),
         }
 
 
