@@ -55,17 +55,36 @@ def join_match(user: User, match: Match, slot_number: int):
     return participant
 
 
-def calculate_results(match: Match):
-    participants = Participant.query.filter_by(match_id=match.id).order_by(desc(Participant.score), desc(Participant.kills), Participant.joined_at.asc()).all()
-    for idx, participant in enumerate(participants, start=1):
-        participant.rank = idx
-        reward_pct = PAYOUT_TABLE.get(idx, 0)
-        reward = int(match.prize_pool * reward_pct)
-        participant.reward_coins = reward
-        if reward > 0:
-            participant.user.coins += reward
-            create_wallet_txn(participant.user_id, reward, WalletTxnType.REWARD.value, f'Reward for rank #{idx} in match #{match.id}')
+def calculate_results(match):
+    participants = Participant.query.filter_by(match_id=match.id).all()
 
-    match.status = MatchStatus.COMPLETED.value
+    # 🔥 SORT BY SCORE + KILLS
+    participants.sort(
+        key=lambda p: (p.score, p.kills),
+        reverse=True
+    )
+
+    # 🔥 ASSIGN RANK
+    for i, p in enumerate(participants):
+        p.rank = i + 1
+
+    # 🔥 DISTRIBUTE REWARDS
+    prize_pool = match.prize_pool
+
+    rewards = {
+        1: int(prize_pool * 0.50),
+        2: int(prize_pool * 0.30),
+        3: int(prize_pool * 0.20),
+    }
+
+    for p in participants:
+        reward = rewards.get(p.rank, 0)
+        p.reward_coins = reward
+
+        if reward > 0:
+            user = User.query.get(p.user_id)
+            user.coins += reward
+
     db.session.commit()
+
     return participants
