@@ -13,6 +13,13 @@ admin_bp = Blueprint('admin', __name__)
 # -----------------------------
 # CREATE MATCH
 # -----------------------------
+@admin_bp.delete('/matches/<int:match_id>')
+@admin_required
+def delete_match(match_id):
+    match = Match.query.get_or_404(match_id)
+    db.session.delete(match)
+    db.session.commit()
+    return jsonify({'message': 'Match deleted'})
 @admin_bp.post('/matches')
 @admin_required
 def create_match():
