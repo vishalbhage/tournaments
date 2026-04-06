@@ -3,7 +3,7 @@ from flask import Blueprint, jsonify, request
 from sqlalchemy.exc import SQLAlchemyError
 
 from ..extensions import db
-from ..models import Match, MatchStatus, Participant
+from ..models import Match, MatchStatus, Participant, User
 from ..services import calculate_results
 from ..utils import admin_required
 
@@ -13,13 +13,6 @@ admin_bp = Blueprint('admin', __name__)
 # -----------------------------
 # CREATE MATCH
 # -----------------------------
-@admin_bp.delete('/matches/<int:match_id>')
-@admin_required
-def delete_match(match_id):
-    match = Match.query.get_or_404(match_id)
-    db.session.delete(match)
-    db.session.commit()
-    return jsonify({'message': 'Match deleted'})
 @admin_bp.post('/matches')
 @admin_required
 def create_match():
@@ -34,8 +27,6 @@ def create_match():
             available_slots=int(data.get('total_slots', 50)),
             is_free=bool(data.get('is_free', False)),
             start_time=datetime.fromisoformat(data['start_time']),
-            room_id=data.get('room_id'),
-            room_password=data.get('room_password'),
             status=MatchStatus.OPEN.value,
         )
 
@@ -46,31 +37,44 @@ def create_match():
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'message': f'Error creating match: {str(e)}'}), 500
+        return jsonify({'message': str(e)}), 500
 
 
 # -----------------------------
-# UPDATE MATCH STATUS
+# DELETE MATCH
 # -----------------------------
-@admin_bp.put('/matches/<int:match_id>/status')
+@admin_bp.delete('/matches/<int:match_id>')
 @admin_required
-def update_match_status(match_id):
+def delete_match(match_id):
+    match = Match.query.get_or_404(match_id)
+
+    db.session.delete(match)
+    db.session.commit()
+
+    return jsonify({'message': 'Match deleted'})
+
+
+# -----------------------------
+# UPDATE MATCH (ROOM + STATUS)
+# -----------------------------
+@admin_bp.put('/matches/<int:match_id>')
+@admin_required
+def update_match(match_id):
     try:
         match = Match.query.get_or_404(match_id)
         data = request.get_json(force=True)
 
-        status = data.get('status')
-        if status not in [m.value for m in MatchStatus]:
-            return jsonify({'message': 'Invalid status'}), 400
+        # ✅ UPDATE STATUS
+        if 'status' in data:
+            if data['status'] in [m.value for m in MatchStatus]:
+                match.status = data['status']
 
-        match.status = status
+        # ✅ UPDATE ROOM DETAILS
+        if 'room_id' in data:
+            match.room_id = data['room_id']
 
-        # Update room details only when match is FULL or LIVE
-        if status in [MatchStatus.FULL.value, MatchStatus.LIVE.value]:
-            if 'room_id' in data:
-                match.room_id = data['room_id']
-            if 'room_password' in data:
-                match.room_password = data['room_password']
+        if 'room_password' in data:
+            match.room_password = data['room_password']
 
         db.session.commit()
 
@@ -78,11 +82,11 @@ def update_match_status(match_id):
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'message': f'Error updating match: {str(e)}'}), 500
+        return jsonify({'message': str(e)}), 500
 
 
 # -----------------------------
-# SUBMIT RESULTS (SAFE VERSION)
+# AUTO RESULT SYSTEM 🔥
 # -----------------------------
 @admin_bp.post('/matches/<int:match_id>/results')
 @admin_required
@@ -90,18 +94,18 @@ def submit_results(match_id):
     try:
         match = Match.query.get_or_404(match_id)
 
-        # 🚫 Prevent duplicate reward distribution
+        # ❌ Prevent duplicate processing
         if match.status == MatchStatus.COMPLETED.value:
-            return jsonify({'message': 'Results already submitted'}), 400
+            return jsonify({'message': 'Already completed'}), 400
 
-        payload = request.get_json(force=True)
-        rows = payload.get('results', [])
+        data = request.get_json(force=True)
+        rows = data.get('results', [])
 
         if not rows:
-            return jsonify({'message': 'Results payload is required'}), 400
+            return jsonify({'message': 'Results required'}), 400
 
-        updated_count = 0
-
+        # 🔥 STEP 1: UPDATE KILLS ONLY
+        updated = 0
         for row in rows:
             participant = Participant.query.filter_by(
                 match_id=match.id,
@@ -109,21 +113,28 @@ def submit_results(match_id):
             ).first()
 
             if participant:
-                participant.score = int(row.get('score', 0))
-                participant.kills = int(row.get('kills', 0))
-                updated_count += 1
+                kills = int(row.get('kills', 0))
+                participant.kills = kills
 
-        if updated_count == 0:
-            return jsonify({'message': 'No valid participants found'}), 400
+                # SIMPLE SCORING SYSTEM
+                participant.score = kills * 10
+
+                updated += 1
+
+        if updated == 0:
+            return jsonify({'message': 'No participants found'}), 400
 
         db.session.commit()
 
-        # 🔥 Calculate ranking + rewards
+        # 🔥 STEP 2: AUTO CALCULATE RANK + REWARD
         ranked = calculate_results(match)
+
+        # 🔥 STEP 3: MARK MATCH COMPLETED
+        match.status = MatchStatus.COMPLETED.value
+        db.session.commit()
 
         return jsonify({
             'message': 'Results processed successfully',
-            'total_updated': updated_count,
             'leaderboard': [p.to_dict() for p in ranked]
         })
 
@@ -133,7 +144,7 @@ def submit_results(match_id):
 
     except Exception as e:
         db.session.rollback()
-        return jsonify({'message': f'Error processing results: {str(e)}'}), 500
+        return jsonify({'message': str(e)}), 500
 
 
 # -----------------------------
@@ -152,11 +163,11 @@ def dashboard():
         })
 
     except Exception as e:
-        return jsonify({'message': f'Error loading dashboard: {str(e)}'}), 500
+        return jsonify({'message': str(e)}), 500
 
 
 # -----------------------------
-# GET ALL MATCHES (ADMIN VIEW)
+# GET ALL MATCHES
 # -----------------------------
 @admin_bp.get('/matches')
 @admin_required
@@ -170,4 +181,4 @@ def get_all_matches():
         ])
 
     except Exception as e:
-        return jsonify({'message': f'Error fetching matches: {str(e)}'}), 500
+        return jsonify({'message': str(e)}), 500
