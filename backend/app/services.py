@@ -58,27 +58,44 @@ def join_match(user: User, match: Match, slot_number: int):
 def calculate_results(match):
     participants = Participant.query.filter_by(match_id=match.id).all()
 
-    # 🔥 SORT BY SCORE + KILLS
-    participants.sort(
-        key=lambda p: (p.score, p.kills),
-        reverse=True
-    )
-
-    # 🔥 ASSIGN RANK
-    for i, p in enumerate(participants):
-        p.rank = i + 1
-
-    # 🔥 DISTRIBUTE REWARDS
-    prize_pool = match.prize_pool
-
-    rewards = {
-        1: int(prize_pool * 0.50),
-        2: int(prize_pool * 0.30),
-        3: int(prize_pool * 0.20),
+    # 🔥 POSITION POINT SYSTEM
+    position_points = {
+        1: 20,
+        2: 15,
+        3: 12,
+        4: 10,
+        5: 8,
+        6: 6,
+        7: 4,
+        8: 3,
+        9: 2,
+        10: 1,
     }
 
     for p in participants:
-        reward = rewards.get(p.rank, 0)
+        base = position_points.get(p.rank, 0)
+        kill_points = p.kills * 2
+
+        p.score = base + kill_points
+
+    # 🔥 SORT FINAL LEADERBOARD
+    participants.sort(key=lambda p: p.score, reverse=True)
+
+    # 🔥 REASSIGN FINAL RANK (optional)
+    for i, p in enumerate(participants):
+        p.final_rank = i + 1
+
+    # 🔥 DISTRIBUTE REWARD
+    prize_pool = match.prize_pool
+
+    rewards = {
+        1: int(prize_pool * 0.5),
+        2: int(prize_pool * 0.3),
+        3: int(prize_pool * 0.2),
+    }
+
+    for p in participants:
+        reward = rewards.get(p.final_rank, 0)
         p.reward_coins = reward
 
         if reward > 0:
