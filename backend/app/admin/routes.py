@@ -55,7 +55,7 @@ def delete_match(match_id):
 
 
 # -----------------------------
-# UPDATE MATCH (ROOM + STATUS)
+# UPDATE MATCH
 # -----------------------------
 @admin_bp.put('/matches/<int:match_id>')
 @admin_required
@@ -64,12 +64,10 @@ def update_match(match_id):
         match = Match.query.get_or_404(match_id)
         data = request.get_json(force=True)
 
-        # ✅ UPDATE STATUS
         if 'status' in data:
             if data['status'] in [m.value for m in MatchStatus]:
                 match.status = data['status']
 
-        # ✅ UPDATE ROOM DETAILS
         if 'room_id' in data:
             match.room_id = data['room_id']
 
@@ -86,7 +84,7 @@ def update_match(match_id):
 
 
 # -----------------------------
-# AUTO RESULT SYSTEM 🔥
+# AUTO RESULT SYSTEM (FINAL 🔥)
 # -----------------------------
 @admin_bp.post('/matches/<int:match_id>/results')
 @admin_required
@@ -94,7 +92,6 @@ def submit_results(match_id):
     try:
         match = Match.query.get_or_404(match_id)
 
-        # ❌ Prevent duplicate processing
         if match.status == MatchStatus.COMPLETED.value:
             return jsonify({'message': 'Already completed'}), 400
 
@@ -104,8 +101,9 @@ def submit_results(match_id):
         if not rows:
             return jsonify({'message': 'Results required'}), 400
 
-        # 🔥 STEP 1: UPDATE KILLS ONLY
         updated = 0
+
+        # 🔥 STEP 1: SAVE RANK + KILLS
         for row in rows:
             participant = Participant.query.filter_by(
                 match_id=match.id,
@@ -113,12 +111,8 @@ def submit_results(match_id):
             ).first()
 
             if participant:
-                kills = int(row.get('kills', 0))
-                participant.kills = kills
-
-                # SIMPLE SCORING SYSTEM
-                participant.score = kills * 10
-
+                participant.rank = int(row.get('rank', 0))
+                participant.kills = int(row.get('kills', 0))
                 updated += 1
 
         if updated == 0:
@@ -126,10 +120,10 @@ def submit_results(match_id):
 
         db.session.commit()
 
-        # 🔥 STEP 2: AUTO CALCULATE RANK + REWARD
+        # 🔥 STEP 2: CALCULATE SCORE + FINAL RANK + REWARD
         ranked = calculate_results(match)
 
-        # 🔥 STEP 3: MARK MATCH COMPLETED
+        # 🔥 STEP 3: COMPLETE MATCH
         match.status = MatchStatus.COMPLETED.value
         db.session.commit()
 
@@ -140,7 +134,7 @@ def submit_results(match_id):
 
     except SQLAlchemyError as e:
         db.session.rollback()
-        return jsonify({'message': f'Database error: {str(e)}'}), 500
+        return jsonify({'message': str(e)}), 500
 
     except Exception as e:
         db.session.rollback()
@@ -148,37 +142,14 @@ def submit_results(match_id):
 
 
 # -----------------------------
-# ADMIN DASHBOARD
-# -----------------------------
-@admin_bp.get('/dashboard')
-@admin_required
-def dashboard():
-    try:
-        return jsonify({
-            'total_matches': Match.query.count(),
-            'open_matches': Match.query.filter_by(status=MatchStatus.OPEN.value).count(),
-            'live_matches': Match.query.filter_by(status=MatchStatus.LIVE.value).count(),
-            'completed_matches': Match.query.filter_by(status=MatchStatus.COMPLETED.value).count(),
-            'participants': Participant.query.count(),
-        })
-
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
-
-
-# -----------------------------
-# GET ALL MATCHES
+# ADMIN MATCH LIST
 # -----------------------------
 @admin_bp.get('/matches')
 @admin_required
 def get_all_matches():
-    try:
-        matches = Match.query.order_by(Match.created_at.desc()).all()
+    matches = Match.query.order_by(Match.created_at.desc()).all()
 
-        return jsonify([
-            m.to_dict(include_sensitive=True)
-            for m in matches
-        ])
-
-    except Exception as e:
-        return jsonify({'message': str(e)}), 500
+    return jsonify([
+        m.to_dict(include_sensitive=True)
+        for m in matches
+    ])
